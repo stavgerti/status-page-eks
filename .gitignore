@@ -1,0 +1,35 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# Python / Django
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.venv/
+*.env
+.env.*
+!.env.example
+
+# Secrets — never commit real values
+*.pem
+*.key
+secrets.yaml
+!secrets.example.yaml
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
