@@ -4,7 +4,9 @@ Production infrastructure for the open-source [Status-Page](https://github.com/S
 
 ## Stack
 
-Terraform · Amazon EKS (managed node group) · ArgoCD (GitOps) · Helm · AWS Load Balancer Controller · ExternalDNS · External Secrets Operator · Actions Runner Controller (self-hosted CI runners) · Prometheus + Grafana · RDS PostgreSQL · ElastiCache Redis · Route 53 + ACM
+Terraform · Amazon EKS (managed node group) · ArgoCD (GitOps) · Helm · AWS Load Balancer Controller · ExternalDNS · External Secrets Operator · Prometheus + Grafana · RDS PostgreSQL · ElastiCache Redis · Route 53 + ACM
+
+CI runs on GitHub-hosted runners (free tier) — no self-hosted runners in the cluster.
 
 Architecture diagrams (kept in sync):
 - Hebrew: https://claude.ai/code/artifact/9d3d9810-9616-44ed-8519-729db13e1577
@@ -15,7 +17,7 @@ Architecture diagrams (kept in sync):
 ```
 infra/        Terraform: VPC, EKS, node group, IAM, RDS, ElastiCache, Route 53, ACM
 platform/     Helm values / bootstrap manifests for cluster-level controllers
-              (ArgoCD, AWS Load Balancer Controller, ExternalDNS, ESO, ARC, kube-prometheus-stack)
+              (ArgoCD, AWS Load Balancer Controller, ExternalDNS, ESO, kube-prometheus-stack)
 app/          Dockerfile, Django production config
 helm/         Helm chart for the Status-Page application itself
               (Deployments, Ingress, Service, migration hook, ExternalSecret)
@@ -30,12 +32,12 @@ helm/         Helm chart for the Status-Page application itself
 | Stav | Terraform: VPC, EKS, node group | `infra/vpc-eks` |
 | Stav | IAM: node role policies, CI role (`sts:AssumeRole`) | `infra/iam` |
 | Stav | RDS, ElastiCache, state backend, Route 53, ACM | `infra/data-dns` |
-| Stav | Bootstrap: ArgoCD, LB Controller, ExternalDNS, ESO, ARC, kube-prometheus-stack | `platform/bootstrap` |
+| Stav | Bootstrap: ArgoCD, LB Controller, ExternalDNS, ESO, kube-prometheus-stack | `platform/bootstrap` |
 | Ilan | Dockerfile, Django production config | `app/container-config` |
 | Ilan | Helm chart: Deployments, Ingress, Service, migration hook, probes, ExternalSecret | `app/helm-chart` |
-| Ilan | GitHub Actions: build → assume role → push → bump tag | `app/cicd` |
+| Ilan | GitHub Actions (GitHub-hosted runners): build → assume role → push → bump tag | `app/cicd` |
 
-**Dependency:** `app/cicd` needs `infra/iam` (the CI role) and `platform/bootstrap` (the runners) merged first.
+**Dependency:** `app/cicd` needs `infra/iam` (the CI role) merged first. It does *not* depend on `platform/bootstrap` — CI runs on GitHub-hosted runners, not in the cluster.
 
 ## Workflow
 
