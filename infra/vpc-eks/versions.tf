@@ -16,10 +16,9 @@ terraform {
 provider "aws" {
   region = var.aws_region
 
-  default_tags {
-    tags = {
-      Owner   = "stav"
-      Project = "status-page-eks"
-    }
-  }
+  # No provider-level default_tags: it force-injects tags onto every
+  # resource including IAM roles/policies, which need iam:TagRole /
+  # iam:TagPolicy (blocked in this account) if they're created with any
+  # tags at all. Tagging is applied per-module instead (see main.tf),
+  # explicitly skipping IAM sub-resources.
 }
