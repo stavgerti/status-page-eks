@@ -45,6 +45,11 @@ REDIS = {
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '*').split(',')
 SITE_URL = os.environ.get('SITE_URL', 'https://status.example.com')
 
+# TLS terminates at the ALB, not in-pod - Django sees plain HTTP from the nginx
+# sidecar. Without this, POSTs (login, admin) fail CSRF checks once accessed over
+# HTTPS, because Django compares the request's Origin against this list.
+CSRF_TRUSTED_ORIGINS = [SITE_URL]
+
 # --- Never allow this to be toggled on via env in a real cluster ---
 DEBUG = False
 
