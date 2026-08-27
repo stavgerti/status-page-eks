@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "status-page.fullname" . }}-worker
+  labels:
+    {{- include "status-page.selectorLabels" (dict "root" . "component" "worker") | nindent 4 }}
+spec:
+  replicas: {{ .Values.worker.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "status-page.selectorLabels" (dict "root" . "component" "worker") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "status-page.selectorLabels" (dict "root" . "component" "worker") | nindent 8 }}
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "manage.py", "rqworker"]
+          args: {{ .Values.worker.queues | splitList " " | toYaml | nindent 12 }}
+          envFrom:
+            - secretRef:
+                name: {{ include "status-page.fullname" . }}-secrets
+          env:
+            - name: ALLOWED_HOSTS
+              value: {{ .Values.env.allowedHosts | quote }}
+            - name: SITE_URL
+              value: {{ .Values.env.siteUrl | quote }}
+            - name: REDIS_SSL
+              value: {{ .Values.env.redisSsl | quote }}
+          # No HTTP port to probe - confirm the rqworker process is actually running.
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -f 'manage.py rqworker'"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.worker.resources | nindent 12 }}

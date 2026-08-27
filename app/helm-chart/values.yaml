@@ -1,0 +1,97 @@
+# Every AWS-side name below (secretStoreRef, ARNs, AWS secret names/keys) is an
+# INPUT you get from your teammate's infra/platform repos - never a resource this
+# chart creates. This chart only ever *references* them by name/ARN.
+
+image:
+  # CI (app/cicd) pushes here; ArgoCD watches this repo and picks up tag bumps.
+  repository: REPLACE_ME.dkr.ecr.REPLACE_ME.amazonaws.com/status-page
+  tag: "v2.5.1"
+  pullPolicy: IfNotPresent
+
+nginx:
+  image: nginx:1.27-alpine
+
+web:
+  replicaCount: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+worker:
+  replicaCount: 1
+  # django-rq queue priority order - passed verbatim to `manage.py rqworker <queues>`.
+  queues: "high default low"
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+scheduler:
+  # rq-scheduler is NOT safe to run with >1 replica - duplicate schedulers double-fire
+  # cron jobs (maintenance/subscriber/metric automation). Keep at 1; not exposed as a
+  # values knob on purpose so a careless override doesn't silently double-schedule jobs.
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+service:
+  port: 80
+  targetPort: 8080 # nginx sidecar listens here
+
+ingress:
+  className: alb
+  host: REPLACE_ME.example.com
+  # ACM cert ARN and any ALB tuning are your teammate's infra output, referenced
+  # here as plain annotations - this chart never creates the certificate/ALB itself.
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/certificate-arn: "REPLACE_ME_ACM_CERT_ARN"
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
+    alb.ingress.kubernetes.io/ssl-redirect: "443"
+
+externalSecret:
+  # Name of the (Cluster)SecretStore your teammate's External Secrets Operator
+  # bootstrap already created - this chart does not create the store or its IAM role.
+  secretStoreRef:
+    name: REPLACE_ME-secretstore
+    kind: ClusterSecretStore
+  refreshInterval: 1h
+
+  # Each entry: secretKey = key name in the k8s Secret this ExternalSecret creates
+  # (also the env var name our Deployments use). remoteKey/property = where that
+  # value actually lives in AWS Secrets Manager. Adjust remoteKey/property to match
+  # whatever shape your teammate's Terraform actually wrote - never the secretKey
+  # side, since that's what the app code expects.
+  data:
+    - secretKey: SECRET_KEY
+      remoteKey: status-page/django
+      property: secret_key
+    - secretKey: DB_HOST
+      remoteKey: status-page/rds
+      property: host
+    - secretKey: DB_PORT
+      remoteKey: status-page/rds
+      property: port
+    - secretKey: DB_NAME
+      remoteKey: status-page/rds
+      property: dbname
+    - secretKey: DB_USER
+      remoteKey: status-page/rds
+      property: username
+    - secretKey: DB_PASSWORD
+      remoteKey: status-page/rds
+      property: password
+    - secretKey: REDIS_HOST
+      remoteKey: status-page/elasticache
+      property: host
+    - secretKey: REDIS_PORT
+      remoteKey: status-page/elasticache
+      property: port
+    - secretKey: REDIS_PASSWORD
+      remoteKey: status-page/elasticache
+      property: auth_token
+
+env:
+  allowedHosts: "REPLACE_ME.example.com"
+  siteUrl: "https://REPLACE_ME.example.com"
+  redisSsl: "false" # set "true" if ElastiCache is deployed with in-transit encryption

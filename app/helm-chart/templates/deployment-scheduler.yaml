@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "status-page.fullname" . }}-scheduler
+  labels:
+    {{- include "status-page.selectorLabels" (dict "root" . "component" "scheduler") | nindent 4 }}
+spec:
+  # Fixed at 1 - not sourced from values.yaml on purpose. rq-scheduler has no
+  # leader election; a second replica double-fires every cron job (maintenance
+  # automation, subscriber cleanup, metrics housekeeping).
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "status-page.selectorLabels" (dict "root" . "component" "scheduler") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "status-page.selectorLabels" (dict "root" . "component" "scheduler") | nindent 8 }}
+    spec:
+      containers:
+        - name: scheduler
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "manage.py", "rqscheduler"]
+          envFrom:
+            - secretRef:
+                name: {{ include "status-page.fullname" . }}-secrets
+          env:
+            - name: ALLOWED_HOSTS
+              value: {{ .Values.env.allowedHosts | quote }}
+            - name: SITE_URL
+              value: {{ .Values.env.siteUrl | quote }}
+            - name: REDIS_SSL
+              value: {{ .Values.env.redisSsl | quote }}
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pgrep -f 'manage.py rqscheduler'"]
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.scheduler.resources | nindent 12 }}

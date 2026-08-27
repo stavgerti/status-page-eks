@@ -1,0 +1,39 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # Unique name per release/revision - a Job's spec is immutable, so reusing one
+  # name across upgrades would make `helm upgrade` fail trying to update it.
+  name: {{ include "status-page.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels:
+    {{- include "status-page.selectorLabels" (dict "root" . "component" "migrate") | nindent 4 }}
+  annotations:
+    # Runs before new web/worker/scheduler pods roll out, on both first install
+    # and every subsequent upgrade - schema must be current before new code runs
+    # against it. Deleted on success so it doesn't linger; kept on failure so you
+    # can `kubectl logs` it (and `helm upgrade` is blocked from proceeding either way).
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        {{- include "status-page.selectorLabels" (dict "root" . "component" "migrate") | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: migrate
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "manage.py", "migrate", "--noinput"]
+          envFrom:
+            - secretRef:
+                name: {{ include "status-page.fullname" . }}-secrets
+          env:
+            - name: ALLOWED_HOSTS
+              value: {{ .Values.env.allowedHosts | quote }}
+            - name: SITE_URL
+              value: {{ .Values.env.siteUrl | quote }}
+            - name: REDIS_SSL
+              value: {{ .Values.env.redisSsl | quote }}
