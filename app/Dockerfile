@@ -31,8 +31,10 @@ ARG STATUS_PAGE_VERSION
 LABEL org.opencontainers.image.source="https://github.com/Status-Page/Status-Page" \
       org.opencontainers.image.version="${STATUS_PAGE_VERSION}"
 
+# procps provides pgrep, used by the worker/scheduler exec probes in the Helm chart
+# (those roles have no HTTP port to health-check over).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends libpq5 procps \
     && rm -rf /var/lib/apt/lists/* \
     && addgroup --system statuspage \
     && adduser --system --ingroup statuspage --home /opt/status-page --shell /usr/sbin/nologin statuspage
