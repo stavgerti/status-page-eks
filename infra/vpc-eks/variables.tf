@@ -34,6 +34,16 @@ variable "node_instance_type" {
   default     = "t3.medium"
 }
 
+variable "cluster_iam_role_arn" {
+  description = "ARN of the manually-created EKS cluster IAM role (see main.tf for why this isn't Terraform-managed)"
+  type        = string
+}
+
+variable "node_iam_role_arn" {
+  description = "ARN of the manually-created EKS node group IAM role (see main.tf for why this isn't Terraform-managed)"
+  type        = string
+}
+
 variable "node_group_size" {
   description = "Desired/min/max size of the EKS managed node group"
   type = object({

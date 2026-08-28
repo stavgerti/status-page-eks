@@ -29,13 +29,8 @@ output "cluster_certificate_authority_data" {
 }
 
 output "node_iam_role_arn" {
-  description = "IAM role ARN used by the EKS node group — infra/iam attaches the LB Controller/ESO/ExternalDNS/EBS CSI policies here, since IRSA isn't available"
-  value       = aws_cloudformation_stack.eks_iam.outputs["NodeRoleArn"]
-}
-
-output "eks_iam_stack_name" {
-  description = "CloudFormation stack holding the cluster/node IAM roles — infra/iam extends the node role's ManagedPolicyArns through this stack"
-  value       = aws_cloudformation_stack.eks_iam.name
+  description = "IAM role ARN used by the EKS node group — infra/iam attaches the LB Controller/ESO/ExternalDNS/EBS CSI policies here manually (see main.tf), since IRSA isn't available and Terraform can't manage this role's policies in this account"
+  value       = var.node_iam_role_arn
 }
 
 output "cluster_security_group_id" {
