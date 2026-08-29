@@ -7,9 +7,14 @@ metadata:
   annotations:
     {{- toYaml .Values.ingress.annotations | nindent 4 }}
 spec:
-  # alb - provisioned by your teammate's AWS Load Balancer Controller install.
-  # This chart only ever references that controller by class name, never installs it.
+  # nginx - ACM is blocked in the course account and an ALB can only take ACM
+  # certs, so HTTPS via ALB isn't possible here. TLS terminates in-cluster via
+  # cert-manager + Let's Encrypt instead, behind an NLB.
   ingressClassName: {{ .Values.ingress.className }}
+  tls:
+    - hosts:
+        - {{ .Values.ingress.host | quote }}
+      secretName: {{ .Values.ingress.tlsSecretName }}
   rules:
     - host: {{ .Values.ingress.host | quote }}
       http:

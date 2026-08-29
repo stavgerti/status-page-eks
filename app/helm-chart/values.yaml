@@ -4,12 +4,19 @@
 
 image:
   # CI (app/cicd) pushes here; ArgoCD watches this repo and picks up tag bumps.
-  repository: REPLACE_ME.dkr.ecr.REPLACE_ME.amazonaws.com/status-page
+  repository: 992382545251.dkr.ecr.us-east-1.amazonaws.com/status-page
   tag: "v2.5.1"
   pullPolicy: IfNotPresent
 
 nginx:
   image: nginx:1.27-alpine
+
+# ElastiCache is deployed with no auth token (private subnet, reachable only
+# from the node security group) and no in-transit encryption - host/port
+# aren't secret, so they're plain values rather than routed through ESO.
+redis:
+  host: stav-status-page-redis.7fftml.ng.0001.use1.cache.amazonaws.com
+  port: 6379
 
 web:
   replicaCount: 2
@@ -38,16 +45,14 @@ service:
   targetPort: 8080 # nginx sidecar listens here
 
 ingress:
-  className: alb
-  host: REPLACE_ME.example.com
-  # ACM cert ARN and any ALB tuning are your teammate's infra output, referenced
-  # here as plain annotations - this chart never creates the certificate/ALB itself.
+  className: nginx
+  host: devops.lvtvv.com
+  # ACM is blocked in the course account and an ALB can only take ACM certs, so
+  # HTTPS via ALB isn't possible - cert-manager + Let's Encrypt issues the cert
+  # instead, terminating TLS in-cluster behind an NLB.
   annotations:
-    alb.ingress.kubernetes.io/scheme: internet-facing
-    alb.ingress.kubernetes.io/target-type: ip
-    alb.ingress.kubernetes.io/certificate-arn: "REPLACE_ME_ACM_CERT_ARN"
-    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP":80},{"HTTPS":443}]'
-    alb.ingress.kubernetes.io/ssl-redirect: "443"
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tlsSecretName: statuspage-tls
 
 externalSecret:
   # Name of the (Cluster)SecretStore your teammate's External Secrets Operator
@@ -63,35 +68,30 @@ externalSecret:
   # whatever shape your teammate's Terraform actually wrote - never the secretKey
   # side, since that's what the app code expects.
   data:
+    # Pending - Stav is creating this now in Secrets Manager and will confirm
+    # the exact remoteKey/property.
     - secretKey: SECRET_KEY
-      remoteKey: status-page/django
-      property: secret_key
+      remoteKey: REPLACE_ME
+      property: REPLACE_ME
+    # Terraform created one secret (stav-status-page/db) for all RDS fields,
+    # not three separate ones - all five DB_* keys read off that same remoteKey.
     - secretKey: DB_HOST
-      remoteKey: status-page/rds
+      remoteKey: stav-status-page/db
       property: host
     - secretKey: DB_PORT
-      remoteKey: status-page/rds
+      remoteKey: stav-status-page/db
       property: port
     - secretKey: DB_NAME
-      remoteKey: status-page/rds
+      remoteKey: stav-status-page/db
       property: dbname
     - secretKey: DB_USER
-      remoteKey: status-page/rds
+      remoteKey: stav-status-page/db
       property: username
     - secretKey: DB_PASSWORD
-      remoteKey: status-page/rds
+      remoteKey: stav-status-page/db
       property: password
-    - secretKey: REDIS_HOST
-      remoteKey: status-page/elasticache
-      property: host
-    - secretKey: REDIS_PORT
-      remoteKey: status-page/elasticache
-      property: port
-    - secretKey: REDIS_PASSWORD
-      remoteKey: status-page/elasticache
-      property: auth_token
 
 env:
-  allowedHosts: "REPLACE_ME.example.com"
-  siteUrl: "https://REPLACE_ME.example.com"
-  redisSsl: "false" # set "true" if ElastiCache is deployed with in-transit encryption
+  allowedHosts: "devops.lvtvv.com"
+  siteUrl: "https://devops.lvtvv.com"
+  redisSsl: "false" # ElastiCache has no in-transit encryption

@@ -28,6 +28,10 @@ spec:
               value: {{ .Values.env.allowedHosts | quote }}
             - name: SITE_URL
               value: {{ .Values.env.siteUrl | quote }}
+            - name: REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
             - name: REDIS_SSL
               value: {{ .Values.env.redisSsl | quote }}
           # No HTTP port to probe - confirm the rqworker process is actually running.
