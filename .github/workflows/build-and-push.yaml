@@ -1,0 +1,74 @@
+name: Build and push
+
+# Only fires on changes that actually affect the image (Dockerfile, vendored
+# app config). Deliberately does NOT watch app/helm-chart/** - the tag-bump
+# commit this workflow makes only touches values.yaml, and watching that
+# path too would make the workflow trigger itself in a loop.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/Dockerfile"
+      - "app/statuspage/**"
+      - ".github/workflows/build-and-push.yaml"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: 992382545251.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: status-page
+  # infra/iam output - scoped to ECR push on this one repo only, 1h session.
+  CI_ROLE_ARN: arn:aws:iam::992382545251:role/stav-status-page-ci
+
+jobs:
+  build-push-bump:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Personal AWS key (long-lived, GitHub Secrets) authenticates just
+      # enough to call sts:AssumeRole. Everything after this step runs on
+      # the assumed role's short-lived, ECR-only credentials instead.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-to-assume: ${{ env.CI_ROLE_ARN }}
+          role-session-name: github-actions
+
+      - name: Login to ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Short commit SHA - unique per build, traceable back to the exact
+      # source, no manual version bumping.
+      - name: Set image tag
+        id: vars
+        run: echo "tag=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: app
+          file: app/Dockerfile
+          push: true
+          tags: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPOSITORY }}:${{ steps.vars.outputs.tag }}
+
+      # GitOps handoff: ArgoCD watches this repo, not the registry - it only
+      # picks up the new image once the chart's values.yaml says so.
+      - name: Bump image tag in Helm chart
+        run: |
+          sed -i "s|^  tag: .*|  tag: \"${{ steps.vars.outputs.tag }}\"|" app/helm-chart/values.yaml
+
+      - name: Commit and push tag bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add app/helm-chart/values.yaml
+          git diff --staged --quiet && exit 0
+          git commit -m "app/helm-chart: bump image tag to ${{ steps.vars.outputs.tag }} [skip ci]"
+          git push
