@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# Blocks a commit if the staged diff matches a known secret pattern.
+# Install once per clone: git config core.hooksPath scripts/hooks
+set -euo pipefail
+
+diff_content="$(git diff --cached -U0 -- . ':(exclude)scripts/hooks/pre-commit')"
+
+if command -v gitleaks >/dev/null 2>&1; then
+    if ! gitleaks protect --staged --redact -v; then
+        echo "gitleaks found a likely secret in the staged diff - commit blocked." >&2
+        exit 1
+    fi
+    exit 0
+fi
+
+# Fallback when gitleaks isn't installed locally - narrower coverage, but
+# catches the common token formats without an extra binary dependency.
+patterns=(
+    'ghp_[A-Za-z0-9]{36}'                    # GitHub PAT (classic)
+    'github_pat_[A-Za-z0-9_]{22,}'           # GitHub PAT (fine-grained)
+    'AKIA[0-9A-Z]{16}'                       # AWS access key ID
+    'aws_secret_access_key\s*=\s*[^ ]+'      # AWS secret key assignment
+    '-----BEGIN [A-Z ]*PRIVATE KEY-----'     # PEM private key
+    'xox[baprs]-[A-Za-z0-9-]{10,}'           # Slack token
+)
+
+for pattern in "${patterns[@]}"; do
+    if echo "$diff_content" | grep -qEi "$pattern"; then
+        echo "Possible secret matching pattern '$pattern' in staged diff - commit blocked." >&2
+        echo "Install gitleaks for full coverage, or if this is a false positive, use git commit --no-verify." >&2
+        exit 1
+    fi
+done
