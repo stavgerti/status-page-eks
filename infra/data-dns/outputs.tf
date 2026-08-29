@@ -30,6 +30,16 @@ output "db_secret_name" {
   value       = aws_secretsmanager_secret.db.name
 }
 
+output "django_secret_arn" {
+  description = "Secrets Manager secret holding Django's SECRET_KEY — the node role needs read access to this too (infra/iam)"
+  value       = aws_secretsmanager_secret.django.arn
+}
+
+output "django_secret_name" {
+  description = "Secrets Manager secret name, for the ExternalSecret manifest in the Helm chart (property: secret_key)"
+  value       = aws_secretsmanager_secret.django.name
+}
+
 output "redis_endpoint" {
   description = "Redis host — not a secret, so it can go straight into Helm values rather than through ESO"
   value       = aws_elasticache_replication_group.main.primary_endpoint_address
