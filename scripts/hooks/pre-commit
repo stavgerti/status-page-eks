@@ -25,7 +25,7 @@ patterns=(
 )
 
 for pattern in "${patterns[@]}"; do
-    if echo "$diff_content" | grep -qEi "$pattern"; then
+    if echo "$diff_content" | grep -qEi -- "$pattern"; then
         echo "Possible secret matching pattern '$pattern' in staged diff - commit blocked." >&2
         echo "Install gitleaks for full coverage, or if this is a false positive, use git commit --no-verify." >&2
         exit 1
