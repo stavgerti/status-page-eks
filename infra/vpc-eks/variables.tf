@@ -25,7 +25,17 @@ variable "availability_zones" {
 variable "cluster_version" {
   description = "Kubernetes version for the EKS cluster"
   type        = string
-  default     = "1.31"
+  default     = "1.36"
+
+  # Check `aws eks describe-cluster-versions` before changing this — a version
+  # can still be accepted by the API long after its standard support has ended,
+  # at which point EKS bills the control plane at the much higher extended
+  # support rate. 1.31 was originally set here and was already nine months past
+  # end-of-standard-support.
+  validation {
+    condition     = contains(["1.34", "1.35", "1.36"], var.cluster_version)
+    error_message = "Pick a version still in EKS standard support (as of 2026-08: 1.34, 1.35, 1.36). Re-check with `aws eks describe-cluster-versions`."
+  }
 }
 
 variable "node_instance_type" {
