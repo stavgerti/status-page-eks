@@ -1,0 +1,95 @@
+# Every AWS-side name below (secretStoreRef, ARNs, AWS secret names/keys) is an
+# INPUT you get from your teammate's infra/platform repos - never a resource this
+# chart creates. This chart only ever *references* them by name/ARN.
+
+image:
+  # CI (app/cicd) pushes here; ArgoCD watches this repo and picks up tag bumps.
+  repository: 992382545251.dkr.ecr.us-east-1.amazonaws.com/status-page
+  tag: "v2.5.1"
+  pullPolicy: IfNotPresent
+
+nginx:
+  image: nginx:1.27-alpine
+
+# ElastiCache is deployed with no auth token (private subnet, reachable only
+# from the node security group) and no in-transit encryption - host/port
+# aren't secret, so they're plain values rather than routed through ESO.
+redis:
+  host: stav-status-page-redis.7fftml.ng.0001.use1.cache.amazonaws.com
+  port: 6379
+
+web:
+  replicaCount: 2
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+worker:
+  replicaCount: 1
+  # django-rq queue priority order - passed verbatim to `manage.py rqworker <queues>`.
+  queues: "high default low"
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits: { cpu: 500m, memory: 512Mi }
+
+scheduler:
+  # rq-scheduler is NOT safe to run with >1 replica - duplicate schedulers double-fire
+  # cron jobs (maintenance/subscriber/metric automation). Keep at 1; not exposed as a
+  # values knob on purpose so a careless override doesn't silently double-schedule jobs.
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits: { cpu: 250m, memory: 256Mi }
+
+service:
+  port: 80
+  targetPort: 8080 # nginx sidecar listens here
+
+ingress:
+  className: nginx
+  host: devops.lvtvv.com
+  # ACM is blocked in the course account and an ALB can only take ACM certs, so
+  # HTTPS via ALB isn't possible - cert-manager + Let's Encrypt issues the cert
+  # instead, terminating TLS in-cluster behind an NLB.
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+  tlsSecretName: statuspage-tls
+
+externalSecret:
+  # Name of the (Cluster)SecretStore your teammate's External Secrets Operator
+  # bootstrap already created - this chart does not create the store or its IAM role.
+  secretStoreRef:
+    name: REPLACE_ME-secretstore
+    kind: ClusterSecretStore
+  refreshInterval: 1h
+
+  # Each entry: secretKey = key name in the k8s Secret this ExternalSecret creates
+  # (also the env var name our Deployments use). remoteKey/property = where that
+  # value actually lives in AWS Secrets Manager. Adjust remoteKey/property to match
+  # whatever shape your teammate's Terraform actually wrote - never the secretKey
+  # side, since that's what the app code expects.
+  data:
+    - secretKey: SECRET_KEY
+      remoteKey: stav-status-page/django
+      property: secret_key
+    # Terraform created one secret (stav-status-page/db) for all RDS fields,
+    # not three separate ones - all five DB_* keys read off that same remoteKey.
+    - secretKey: DB_HOST
+      remoteKey: stav-status-page/db
+      property: host
+    - secretKey: DB_PORT
+      remoteKey: stav-status-page/db
+      property: port
+    - secretKey: DB_NAME
+      remoteKey: stav-status-page/db
+      property: dbname
+    - secretKey: DB_USER
+      remoteKey: stav-status-page/db
+      property: username
+    - secretKey: DB_PASSWORD
+      remoteKey: stav-status-page/db
+      property: password
+
+env:
+  allowedHosts: "devops.lvtvv.com"
+  siteUrl: "https://devops.lvtvv.com"
+  redisSsl: "false" # ElastiCache has no in-transit encryption

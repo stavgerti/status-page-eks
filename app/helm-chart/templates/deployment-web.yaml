@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "status-page.fullname" . }}-web
+  labels:
+    {{- include "status-page.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
+spec:
+  replicas: {{ .Values.web.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "status-page.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "status-page.selectorLabels" (dict "root" . "component" "web") | nindent 8 }}
+    spec:
+      # Static files are collectstatic'd into the app image at build time. This
+      # copies them into the emptyDir the nginx sidecar reads from - the sidecar's
+      # own container image has no access to the app image's filesystem otherwise.
+      initContainers:
+        - name: copy-static
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          command: ["sh", "-c", "cp -a /opt/status-page/statuspage/static/. /shared-static/"]
+          volumeMounts:
+            - name: shared-static
+              mountPath: /shared-static
+      containers:
+        - name: django
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - secretRef:
+                name: {{ include "status-page.fullname" . }}-secrets
+          env:
+            - name: ALLOWED_HOSTS
+              value: {{ .Values.env.allowedHosts | quote }}
+            - name: SITE_URL
+              value: {{ .Values.env.siteUrl | quote }}
+            - name: REDIS_HOST
+              value: {{ .Values.redis.host | quote }}
+            - name: REDIS_PORT
+              value: {{ .Values.redis.port | quote }}
+            - name: REDIS_SSL
+              value: {{ .Values.env.redisSsl | quote }}
+          # Proves the gunicorn process is alive without touching the DB/Redis -
+          # a transient DB blip should not cause a pod restart on its own.
+          livenessProbe:
+            tcpSocket:
+              port: 8001
+            initialDelaySeconds: 10
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+        - name: nginx
+          image: {{ .Values.nginx.image }}
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: shared-static
+              mountPath: /shared-static
+              readOnly: true
+            - name: nginx-config
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: nginx.conf
+          # Proves the full stack (nginx + gunicorn + DB + Redis) is actually
+          # serving - pulls the pod out of the Service if any of that fails.
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: shared-static
+          emptyDir: {}
+        - name: nginx-config
+          configMap:
+            name: {{ include "status-page.fullname" . }}-nginx
