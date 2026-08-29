@@ -10,7 +10,8 @@ override.tf
 override.tf.json
 *_override.tf
 *_override.tf.json
-.terraform.lock.hcl
+# .terraform.lock.hcl is intentionally NOT ignored - commit it so everyone
+# (and CI later) gets the same pinned provider versions from `terraform init`.
 
 # Python / Django
 __pycache__/
