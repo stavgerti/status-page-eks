@@ -1,5 +1,5 @@
 terraform {
-  required_version = ">= 1.7.0"
+  required_version = ">= 1.10.0" # 1.10 is where S3-native state locking landed
 
   required_providers {
     aws = {
@@ -8,9 +8,16 @@ terraform {
     }
   }
 
-  # No backend block yet — using local state until infra/data-dns creates
-  # the S3 + DynamoDB backend, then this gets migrated with
-  # `terraform init -migrate-state`.
+  # State lives in the S3 bucket created by infra/bootstrap.
+  # use_lockfile is S3-native locking (Terraform >= 1.10) — this account has
+  # no DynamoDB access, and with S3 locking a lock table isn't needed anyway.
+  backend "s3" {
+    bucket       = "stav-status-page-eks-tfstate"
+    key          = "vpc-eks/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true
+  }
 }
 
 provider "aws" {
