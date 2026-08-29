@@ -68,11 +68,9 @@ externalSecret:
   # whatever shape your teammate's Terraform actually wrote - never the secretKey
   # side, since that's what the app code expects.
   data:
-    # Pending - Stav is creating this now in Secrets Manager and will confirm
-    # the exact remoteKey/property.
     - secretKey: SECRET_KEY
-      remoteKey: REPLACE_ME
-      property: REPLACE_ME
+      remoteKey: stav-status-page/django
+      property: secret_key
     # Terraform created one secret (stav-status-page/db) for all RDS fields,
     # not three separate ones - all five DB_* keys read off that same remoteKey.
     - secretKey: DB_HOST
