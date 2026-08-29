@@ -33,6 +33,11 @@ output "node_iam_role_arn" {
   value       = var.node_iam_role_arn
 }
 
+output "node_security_group_id" {
+  description = "Security group attached to the worker nodes. Pod traffic leaves through this SG (VPC CNI gives pods VPC IPs), so this is what RDS/ElastiCache in infra/data-dns must allow inbound from — not the cluster SG."
+  value       = module.eks.node_security_group_id
+}
+
 output "cluster_security_group_id" {
   description = "Security group ID attached to the EKS cluster's ENIs"
   value       = module.eks.cluster_security_group_id
