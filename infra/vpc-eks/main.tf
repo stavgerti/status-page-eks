@@ -106,6 +106,25 @@ module "eks" {
   # requirement for the project. Revisit if we confirm kms:CreateKey works.
   cluster_encryption_config = {}
 
+  # The EBS CSI driver, without which no PersistentVolumeClaim can be
+  # satisfied — Prometheus needs one for its metrics store.
+  #
+  # It is genuinely required rather than a nicety: the in-tree
+  # kubernetes.io/aws-ebs provisioner that the default gp2 StorageClass still
+  # points at was removed from Kubernetes core in 1.31, so on 1.36 a PVC using
+  # it just sits Pending forever. See platform/bootstrap for the gp3
+  # StorageClass that replaces it.
+  #
+  # Installed as a managed addon rather than a Helm chart so AWS owns the
+  # version. No service_account_role_arn: that's the IRSA field, and with
+  # iam:CreateOpenIDConnectProvider denied here the driver falls back to the
+  # node role, which infra/iam has attached AmazonEBSCSIDriverPolicy to.
+  cluster_addons = {
+    aws-ebs-csi-driver = {
+      most_recent = true
+    }
+  }
+
   eks_managed_node_groups = {
     default = {
       instance_types = [var.node_instance_type]
