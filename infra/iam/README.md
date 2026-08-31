@@ -56,6 +56,30 @@ that takes no resource. Everything else is scoped to the one repository ARN.
 auth token and read the `status-page` repo, *and* that it's denied reading the
 database secret, listing EKS clusters, and touching another student's ECR repo.
 
+#### The workflow must set `role-skip-session-tagging: true`
+
+`aws-actions/configure-aws-credentials` doesn't just call `sts:AssumeRole` — by
+default it also attaches session tags recording the repository, workflow and
+actor. That needs `sts:TagSession` in the trust policy, and this trust policy
+only grants `sts:AssumeRole`, so the action fails with:
+
+```
+Could not assume role with user credentials: User: .../stav is not authorized
+to perform: sts:TagSession on resource: .../stav-status-page-ci
+```
+
+It isn't fixable from this side: `iam:UpdateAssumeRolePolicy` is denied in this
+account, so the trust policy on the existing role can't be amended, and creating
+a replacement role would strand the current one (deletion is denied too). The
+workflow skipping session tagging costs only the CloudTrail metadata about which
+run assumed the role — worth having, not worth an extra permission request and
+an orphaned role.
+
+Worth noting how this got missed: the role was verified with `aws sts
+assume-role` from the CLI, which sends no session tags, so it passed while the
+path that actually matters failed. Verify the real caller, not an approximation
+of it.
+
 ### Node role policies — not here yet
 
 The AWS Load Balancer Controller, EBS CSI Driver, External Secrets Operator and
