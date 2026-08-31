@@ -40,6 +40,13 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.CI_ROLE_ARN }}
           role-session-name: github-actions
+          # The action tags the assumed session (repo/workflow/actor) unless
+          # told not to, which needs sts:TagSession in the role's trust policy.
+          # That policy grants only sts:AssumeRole, and it can't be amended -
+          # iam:UpdateAssumeRolePolicy is denied in this account. Skipping the
+          # tagging costs only CloudTrail metadata about which run assumed the
+          # role. See infra/iam/README.md.
+          role-skip-session-tagging: true
 
       - name: Login to ECR
         uses: aws-actions/amazon-ecr-login@v2
