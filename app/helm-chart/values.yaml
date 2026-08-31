@@ -51,7 +51,7 @@ ingress:
   # HTTPS via ALB isn't possible - cert-manager + Let's Encrypt issues the cert
   # instead, terminating TLS in-cluster behind an NLB.
   annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-staging
+    cert-manager.io/cluster-issuer: letsencrypt-prod
   tlsSecretName: statuspage-tls
 
 externalSecret:
