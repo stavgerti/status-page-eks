@@ -20,7 +20,13 @@ spec:
       initContainers:
         - name: copy-static
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
-          command: ["sh", "-c", "cp -a /opt/status-page/statuspage/static/. /shared-static/"]
+          # -r, not -a: the image runs as a non-root user, and -a also tries to
+          # preserve timestamps on the emptyDir's mount point itself, which that
+          # user doesn't own — "cp: preserving times for '/shared-static/.':
+          # Operation not permitted", which failed the init container and kept
+          # the web pods in Init:Error. Ownership and timestamps on static assets
+          # don't matter here; nginx only needs to read them.
+          command: ["sh", "-c", "cp -r /opt/status-page/statuspage/static/. /shared-static/"]
           volumeMounts:
             - name: shared-static
               mountPath: /shared-static
