@@ -58,7 +58,7 @@ externalSecret:
   # Name of the (Cluster)SecretStore your teammate's External Secrets Operator
   # bootstrap already created - this chart does not create the store or its IAM role.
   secretStoreRef:
-    name: REPLACE_ME-secretstore
+    name: aws-secrets-manager
     kind: ClusterSecretStore
   refreshInterval: 1h
 
