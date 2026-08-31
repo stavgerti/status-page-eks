@@ -76,6 +76,13 @@ spec:
             httpGet:
               path: /
               port: 8080
+              # Without this the kubelet sends the pod IP as the Host header,
+              # Django compares it against ALLOWED_HOSTS, rejects it with 400,
+              # and the pod never becomes ready. Sending the real hostname makes
+              # the probe look like the traffic this pod actually serves.
+              httpHeaders:
+                - name: Host
+                  value: {{ .Values.ingress.host | quote }}
             initialDelaySeconds: 5
             periodSeconds: 10
       volumes:
