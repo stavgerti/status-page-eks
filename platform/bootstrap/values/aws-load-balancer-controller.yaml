@@ -1,0 +1,31 @@
+# AWS Load Balancer Controller
+#
+# Watches Kubernetes Services and Ingresses and creates the matching AWS load
+# balancers. Here it has one job: turn ingress-nginx's Service into an NLB.
+#
+# Note there is no eks.amazonaws.com/role-arn annotation on the ServiceAccount.
+# That's how IRSA would normally scope permissions to this pod alone, but this
+# account denies iam:CreateOpenIDConnectProvider, so there's no OIDC provider to
+# bind to. Without the annotation the AWS SDK falls through to the instance
+# metadata credentials, i.e. the node role - which infra/iam has granted the
+# controller's policy.
+
+clusterName: stav-status-page-eks
+
+region: us-east-1
+vpcId: vpc-0e6b934ae27bc633e
+
+serviceAccount:
+  create: true
+  name: aws-load-balancer-controller
+
+# Two replicas so a single node draining doesn't leave load balancer changes
+# unreconciled; the chart spreads them and runs a leader election.
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 96Mi
+  limits:
+    memory: 192Mi

@@ -1,0 +1,47 @@
+# Let's Encrypt issuers, staging and production.
+#
+# Always point a new or changed Ingress at letsencrypt-staging first. Let's
+# Encrypt production allows 5 duplicate certificates per week and there is no
+# way to lift that limit early — debugging against it can lock you out for days.
+# Staging issues untrusted certificates (the browser will warn) but is
+# effectively unlimited, so it proves the whole chain works: DNS resolves, the
+# NLB routes port 80, the ingress controller serves the challenge, and
+# cert-manager writes the Secret. Only then switch the annotation to
+# letsencrypt-prod.
+#
+# HTTP-01 rather than DNS-01: Let's Encrypt fetches a token over plain HTTP
+# through the ingress controller, so no AWS credentials are involved at all.
+# DNS-01 would need Route 53 write access from the cert-manager pod, and is only
+# necessary for wildcard certificates, which this project doesn't use.
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: stavgerti10@gmail.com
+    # Where cert-manager keeps the ACME account key. Separate from prod so the
+    # two accounts never collide.
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: stavgerti10@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - http01:
+          ingress:
+            ingressClassName: nginx

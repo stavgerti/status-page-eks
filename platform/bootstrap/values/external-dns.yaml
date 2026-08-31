@@ -1,0 +1,46 @@
+# ExternalDNS — watches Ingresses and writes the matching Route 53 records.
+#
+# This closes a gap Terraform can't: the load balancer is created by the AWS Load
+# Balancer Controller at runtime, so its DNS name doesn't exist at plan time and
+# Terraform can't write the record pointing at it. ExternalDNS watches from
+# inside the cluster and writes it once the Ingress is up.
+#
+# Like every other controller here it authenticates through the node role (no
+# IRSA in this account); infra/iam grants it route53:ChangeResourceRecordSets on
+# our zone only, plus the list calls, which take no resource.
+
+provider:
+  name: aws
+
+env:
+  - name: AWS_REGION
+    value: us-east-1
+
+# Only manage records inside the subdomain the mentor delegated to us. Without
+# this, ExternalDNS would consider every hosted zone the credentials can see.
+domainFilters:
+  - devops.lvtvv.com
+
+# Restricting to our zone id as well, so a same-named zone elsewhere in this
+# shared account could never be touched.
+extraArgs:
+  - --zone-id-filter=Z01048142P6LD2YAPVXYD
+
+# `sync` lets ExternalDNS delete records it created once the Ingress goes away;
+# `upsert-only` would leave them behind pointing at a dead load balancer.
+policy: sync
+
+# Tags every record it creates with this owner id, and refuses to touch records
+# it doesn't own — the safeguard that matters in a shared account.
+txtOwnerId: stav-status-page
+
+sources:
+  - ingress
+  - service
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
