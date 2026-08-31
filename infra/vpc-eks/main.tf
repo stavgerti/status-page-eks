@@ -78,6 +78,14 @@ module "eks" {
 
   cluster_endpoint_public_access = true
 
+  # Creating the cluster does not by itself grant its creator access to the
+  # Kubernetes API — the node role gets an access entry automatically, which is
+  # why nodes join fine, but a human running kubectl is rejected with a 401
+  # until an access entry exists for them too. This grants the identity that
+  # runs Terraform (the `stav` user) cluster-admin through the EKS access-entry
+  # API rather than the older aws-auth ConfigMap.
+  enable_cluster_creator_admin_permissions = true
+
   # This account blocks iam:CreateOpenIDConnectProvider, so IRSA is not usable —
   # controllers (LB Controller, ESO, ExternalDNS, EBS CSI) get AWS permissions
   # via the shared node role instead (wired up in infra/iam).
