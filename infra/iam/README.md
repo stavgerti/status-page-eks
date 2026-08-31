@@ -80,18 +80,39 @@ assume-role` from the CLI, which sends no session tags, so it passed while the
 path that actually matters failed. Verify the real caller, not an approximation
 of it.
 
-### Node role policies — not here yet
+### Node role — `stav-status-page-eks-node-role`
 
-The AWS Load Balancer Controller, EBS CSI Driver, External Secrets Operator and
-ExternalDNS all need AWS permissions via the node role, since this account has no
-IRSA (`iam:CreateOpenIDConnectProvider` is denied).
+There is no IRSA in this account (`iam:CreateOpenIDConnectProvider` is denied),
+so the cluster's controllers take their AWS permissions from the node role
+instead of per-pod roles. That's the pre-2019 EKS pattern — legitimate and
+explainable, but worth being explicit that the trade-off is real: every pod
+scheduled on a node can reach these permissions, not just the controller they
+were granted for.
 
-Deliberately deferred: there are no nodes yet (the node group is blocked on IAM
-read permissions from the admin), so nothing that needs those permissions can
-actually run, and `ListAttachedRolePolicies` being denied means we can't even
-inspect what's attached. Writing and applying them now would be doing it blind
-and unverifiable. cert-manager, for what it's worth, needs no AWS permissions at
-all — the HTTP-01 challenge never touches AWS.
+| Policy | Type | For |
+|---|---|---|
+| `lb-controller` | inline | AWS Load Balancer Controller — provisions the NLB from ingress-nginx's Service |
+| `external-secrets` | inline | External Secrets Operator — reads `stav-status-page/*` from Secrets Manager |
+| `externaldns` | inline | ExternalDNS — writes records in the `devops.lvtvv.com` zone |
+| `AmazonEBSCSIDriverPolicy` | AWS managed | EBS CSI driver — volumes for the Prometheus PVC |
+
+`lb-controller.json` is fetched verbatim from
+[the upstream repo](https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/main/docs/install/iam_policy.json)
+rather than hand-written — it's 16 statements of fine-grained EC2 and ELB
+permissions, and getting one wrong surfaces as a controller failure much later.
+Re-fetch it when upgrading the controller.
+
+Scoping: ExternalDNS can only write to our zone (`Z01048142P6LD2YAPVXYD`); the
+Route 53 *list* calls have to be `Resource: "*"` because those APIs take no
+resource. ESO is scoped to the `stav-status-page/` secret prefix by wildcard, so
+it survives a secret being recreated with a different random ARN suffix.
+
+**Verified after applying:** all four are attached, the ESO resource matches the
+secret prefix, and the zone ID in the ExternalDNS policy matches the zone that
+actually exists in Route 53.
+
+cert-manager appears in none of this on purpose — the HTTP-01 challenge never
+calls AWS, so it needs no permissions at all.
 
 ## Account constraints worth knowing before editing
 
