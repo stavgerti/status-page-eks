@@ -24,6 +24,8 @@ helm repo add nginx-stable https://helm.nginx.com/stable >/dev/null
 helm repo add jetstack https://charts.jetstack.io >/dev/null
 helm repo add external-secrets https://charts.external-secrets.io >/dev/null
 helm repo add external-dns https://kubernetes-sigs.github.io/external-dns >/dev/null
+helm repo add argo https://argoproj.github.io/argo-helm >/dev/null
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts >/dev/null
 helm repo update >/dev/null
 
 echo "==> AWS Load Balancer Controller"
@@ -58,10 +60,21 @@ helm upgrade --install external-dns external-dns/external-dns \
   --values values/external-dns.yaml \
   --wait --timeout 8m
 
+echo "==> ArgoCD"
+helm upgrade --install argocd argo/argo-cd   --namespace argocd --create-namespace   --values values/argocd.yaml   --wait --timeout 10m
+
+# Grafana's admin password is passed in rather than committed. Generate one and
+# keep it somewhere safe; re-running without it would reset the password.
+: "${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD before running}"
+echo "==> kube-prometheus-stack"
+helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack   --namespace monitoring --create-namespace   --values values/kube-prometheus-stack.yaml   --set grafana.adminPassword="${GRAFANA_ADMIN_PASSWORD}"   --timeout 12m
+
 # Applied after their operators so the CRDs they depend on already exist.
 echo "==> Cluster-scoped resources"
 kubectl apply -f manifests/cluster-issuers.yaml
 kubectl apply -f manifests/cluster-secret-store.yaml
+kubectl apply -f manifests/storageclass.yaml
+kubectl apply -f manifests/application.yaml
 
 echo
 echo "==> Status"

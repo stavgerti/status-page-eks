@@ -1,0 +1,51 @@
+# The GitOps handoff.
+#
+# CI builds an image, pushes it to ECR, and commits the new tag into
+# app/helm-chart/values.yaml. It never touches the cluster and never holds
+# cluster credentials. ArgoCD, running inside the cluster, notices that commit
+# and reconciles it. Git is the source of truth for what's deployed.
+#
+# The repository is private; ArgoCD authenticates with the read-only deploy key
+# stored in the `status-page-repo` secret.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: status-page
+  namespace: argocd
+  finalizers:
+    # Without this, deleting the Application leaves everything it created
+    # orphaned in the cluster.
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: git@github.com:stavgerti/status-page-eks.git
+    targetRevision: main
+    path: app/helm-chart
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: status-page
+
+  syncPolicy:
+    automated:
+      # Revert anything changed directly in the cluster — the whole point of
+      # GitOps is that manual kubectl edits don't survive.
+      selfHeal: true
+      # Remove resources that disappear from the chart, rather than leaving
+      # them behind.
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+      # The migration Job is a Helm hook; without this ArgoCD treats the
+      # completed Job as drift and keeps trying to correct it.
+      - ApplyOutOfSyncOnly=true
+
+  # Migrations run as a pre-upgrade hook and can take a moment on a cold
+  # database; don't declare failure too early.
+  ignoreDifferences:
+    - group: batch
+      kind: Job
+      jsonPointers:
+        - /spec/template/metadata/labels

@@ -1,0 +1,27 @@
+# gp3 storage, provisioned by the EBS CSI driver.
+#
+# The cluster ships with a gp2 StorageClass pointing at the in-tree
+# kubernetes.io/aws-ebs provisioner, which Kubernetes removed from core in 1.31.
+# On 1.36 that class is inert: a PVC using it stays Pending with nothing to
+# fulfil it. This replaces it as the default so anything asking for storage
+# without naming a class — Prometheus, for one — actually gets a volume.
+#
+# gp3 over gp2 because it is cheaper per GB and its baseline performance is not
+# tied to volume size, so a small volume isn't also a slow one.
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+parameters:
+  type: gp3
+  encrypted: "true"
+# Retain would leave orphaned EBS volumes behind on teardown, and this account
+# can't be cleaned up freely.
+reclaimPolicy: Delete
+# Don't provision until a pod is scheduled — an EBS volume lives in one AZ, and
+# creating it early risks placing it where the pod can't be scheduled.
+volumeBindingMode: WaitForFirstConsumer
+allowVolumeExpansion: true
