@@ -1,0 +1,74 @@
+# Let's Encrypt issuers, staging and production.
+#
+# Always point a new or changed Ingress at letsencrypt-staging first. Production
+# allows 5 duplicate certificates per week with no way to lift the limit early,
+# so debugging against it can lock you out for days. It matters more than usual
+# here: Let's Encrypt also caps 50 certificates per week per *registered*
+# domain, and the registered domain is lvtvv.com — the mentor's, not ours.
+# Burning that quota would affect him, not just this project. Staging
+# certificates are untrusted by browsers but effectively unlimited, and prove
+# the whole chain works before production is touched.
+#
+# --- Why DNS-01 and not HTTP-01 -------------------------------------------
+#
+# HTTP-01 was the original design (it needs no AWS credentials at all) and it
+# does not work with the ingress controller this cluster runs.
+#
+# cert-manager solves an HTTP-01 challenge by creating a second, temporary
+# Ingress for the same hostname, serving just the /.well-known/acme-challenge
+# path. The community kubernetes/ingress-nginx merges multiple Ingresses for one
+# host, so that works there. F5's nginx/kubernetes-ingress — which this cluster
+# uses, because the community one is archived — does not merge them without
+# explicit master/minion annotations, and rejects the solver outright:
+#
+#   Ingress cm-acme-http-solver-xxxxx ... 'Rejected' All hosts are taken by
+#   other resources
+#
+# The request then falls through to the real Ingress, which has TLS configured
+# and redirects to HTTPS, and the challenge fails against a certificate that
+# doesn't exist yet.
+#
+# DNS-01 sidesteps all of it: cert-manager writes a TXT record instead of
+# serving a path, so no Ingress is involved and nothing can conflict. It costs
+# an AWS permission, which we already have — the node role can write to this
+# zone (granted for ExternalDNS), and cert-manager authenticates through that
+# same node role since there's no IRSA in this account.
+#
+# Two incidental gains: port 80 no longer has to be publicly reachable for
+# issuance, and wildcard certificates become possible if ever needed.
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    email: stavgerti10@gmail.com
+    # Where cert-manager keeps the ACME account key. Separate from prod so the
+    # two accounts never collide.
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      - dns01:
+          route53:
+            region: us-east-1
+            # Pinned to our delegated zone so a misconfigured Certificate can't
+            # send cert-manager looking through other zones in this shared account.
+            hostedZoneID: Z01048142P6LD2YAPVXYD
+---
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-prod
+spec:
+  acme:
+    server: https://acme-v02.api.letsencrypt.org/directory
+    email: stavgerti10@gmail.com
+    privateKeySecretRef:
+      name: letsencrypt-prod-account-key
+    solvers:
+      - dns01:
+          route53:
+            region: us-east-1
+            hostedZoneID: Z01048142P6LD2YAPVXYD

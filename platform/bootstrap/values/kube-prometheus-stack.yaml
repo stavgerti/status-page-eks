@@ -1,0 +1,113 @@
+# Prometheus, Grafana and Alertmanager.
+#
+# Sized for a two-node t3.medium cluster that is already running the ingress
+# controller, cert-manager, ESO, ExternalDNS, ArgoCD and the application. The
+# defaults in this chart assume a much larger cluster and will not schedule
+# here, so most of what follows is trimming rather than tuning.
+
+prometheus:
+  prometheusSpec:
+    # The chart defaults to watching only resources it created. Turning these
+    # off makes Prometheus pick up any ServiceMonitor in the cluster, which is
+    # what lets the application be scraped without editing this file.
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+
+    # Long enough to show trends during a demo, short enough to stay inside the
+    # volume below.
+    retention: 7d
+
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 10Gi
+
+    resources:
+      requests:
+        cpu: 100m
+        memory: 512Mi
+      limits:
+        memory: 1Gi
+
+grafana:
+  # Password comes from --set at install time rather than living in git.
+  adminPassword: ""
+
+  persistence:
+    enabled: true
+    storageClassName: gp3
+    size: 2Gi
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
+
+  # Reached with `kubectl port-forward`. Deliberately not exposed through an
+  # Ingress: ArgoCD is already publicly reachable and that was a considered
+  # trade-off for the demo, but a second admin surface with a static password
+  # is not worth adding on top.
+  service:
+    type: ClusterIP
+
+alertmanager:
+  alertmanagerSpec:
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: gp3
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 2Gi
+    resources:
+      requests:
+        cpu: 20m
+        memory: 64Mi
+      limits:
+        memory: 128Mi
+
+# Runs on every node to collect CPU, memory, disk and network metrics.
+nodeExporter:
+  enabled: true
+prometheus-node-exporter:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
+# Turns Kubernetes object state (pod phases, deployment replicas, restart
+# counts) into metrics — the source for most of the useful dashboards.
+kubeStateMetrics:
+  enabled: true
+kube-state-metrics:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+# EKS does not expose the control plane, so these scrape targets can never be
+# reached and would sit permanently red on the dashboards. AWS runs and
+# monitors those components; leaving them enabled only teaches you to ignore
+# alerts.
+kubeApiServer:
+  enabled: true
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false

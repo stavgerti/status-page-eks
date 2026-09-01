@@ -1,0 +1,47 @@
+# NGINX Ingress Controller (nginx/kubernetes-ingress, the F5/NGINX-maintained one)
+#
+# Not kubernetes/ingress-nginx. Those are two different controllers wrapping the
+# same NGINX proxy, and the community one was archived on 2026-03-24 — no more
+# releases, bugfixes, or security patches, and its own README says not to deploy
+# it if you aren't already using it. An internet-facing component with no path to
+# a CVE fix isn't something to build on. This one is actively maintained (v5.5.4,
+# Apache 2.0) and registers the same `nginx` ingress class, so nothing in the
+# application chart changes.
+#
+# Annotation syntax does differ between the two (nginx.org/* here, not
+# nginx.ingress.kubernetes.io/*) — relevant only if we later tune timeouts or
+# body size. The cert-manager annotation is unaffected.
+
+controller:
+  kind: deployment
+  replicaCount: 2
+
+  ingressClass:
+    name: nginx
+    create: true
+    # Not the cluster default: an Ingress with no class set should be ignored
+    # rather than silently picked up, so anything routed through here is routed
+    # deliberately.
+    setAsDefaultIngress: false
+
+  service:
+    type: LoadBalancer
+    annotations:
+      # Hands the Service to the AWS Load Balancer Controller rather than the
+      # in-tree provider, and asks for an NLB.
+      service.beta.kubernetes.io/aws-load-balancer-type: "external"
+      service.beta.kubernetes.io/aws-load-balancer-nlb-target-type: "ip"
+      service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+
+  # TLS terminates here, in the cluster, using the certificate cert-manager
+  # issues — which is the whole reason for an NLB in passthrough rather than an
+  # ALB. An ALB can only load certificates from ACM, and ACM is denied in this
+  # account.
+  enableCustomResources: true
+
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      memory: 256Mi
