@@ -43,12 +43,17 @@ grafana:
     storageClassName: gp3
     size: 2Gi
 
+  # 256Mi was too tight and got the container OOMKilled the moment real
+  # dashboards were opened - Grafana loads panel data and query results into
+  # memory, so browsing costs far more than sitting idle. The pod count ceiling
+  # that forced everything to be trimmed is gone now that prefix delegation is
+  # on, so there is room to be realistic.
   resources:
     requests:
       cpu: 50m
-      memory: 128Mi
-    limits:
       memory: 256Mi
+    limits:
+      memory: 768Mi
 
   # Reached with `kubectl port-forward`. Deliberately not exposed through an
   # Ingress: ArgoCD is already publicly reachable and that was a considered
