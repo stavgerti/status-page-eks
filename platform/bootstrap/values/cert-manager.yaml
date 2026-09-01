@@ -1,0 +1,39 @@
+# cert-manager — issues and renews the TLS certificate from Let's Encrypt.
+#
+# This exists because ACM is denied in this account, and an ALB can only load
+# certificates from ACM. Terminating TLS inside the cluster with a cert-manager
+# certificate is what makes HTTPS possible at all here, and it's why the load
+# balancer is an NLB passing TCP through rather than an ALB.
+#
+# No AWS permissions are needed: the HTTP-01 challenge is served over port 80
+# through the ingress controller and never calls an AWS API. (DNS-01 would need
+# Route 53 write access from the pod, and is only required for wildcard certs,
+# which we don't use.)
+
+crds:
+  enabled: true
+
+replicaCount: 2
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 128Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 64Mi
+
+cainjector:
+  resources:
+    requests:
+      cpu: 20m
+      memory: 96Mi
+    limits:
+      memory: 192Mi

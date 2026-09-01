@@ -1,0 +1,23 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "WriteRecordsInOurZoneOnly",
+      "Effect": "Allow",
+      "Action": "route53:ChangeResourceRecordSets",
+      "Resource": "arn:aws:route53:::hostedzone/Z01048142P6LD2YAPVXYD"
+    },
+    {
+      "Sid": "DiscoverZonesAndRecords",
+      "Effect": "Allow",
+      "Action": [
+        "route53:ListHostedZones",
+        "route53:ListHostedZonesByName",
+        "route53:ListResourceRecordSets",
+        "route53:ListTagsForResource",
+        "route53:GetChange"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

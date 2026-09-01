@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "status-page.fullname" . }}-nginx
+  labels:
+    {{- include "status-page.labels" . | nindent 4 }}
+data:
+  nginx.conf: |
+    server {
+        listen 8080;
+
+        client_max_body_size 25m;
+
+        location /static/ {
+            alias /shared-static/;
+        }
+
+        location / {
+            proxy_pass http://127.0.0.1:8001;
+            proxy_set_header Host $http_host;
+            # ALB already terminated TLS and set these - pass through as-is, do not
+            # regenerate from $scheme (nginx only ever sees plain HTTP from the ALB).
+            proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+            proxy_set_header X-Forwarded-Host $http_host;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+    }
