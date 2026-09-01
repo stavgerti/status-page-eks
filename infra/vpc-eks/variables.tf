@@ -54,6 +54,12 @@ variable "node_iam_role_arn" {
   type        = string
 }
 
+variable "node_ami_type" {
+  description = "AMI family for the node group. Stated explicitly rather than left to a default — see the comment in main.tf."
+  type        = string
+  default     = "AL2023_x86_64_STANDARD"
+}
+
 variable "node_group_size" {
   description = "Desired/min/max size of the EKS managed node group"
   type = object({

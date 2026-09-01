@@ -123,11 +123,64 @@ module "eks" {
     aws-ebs-csi-driver = {
       most_recent = true
     }
+
+    # The VPC CNI, taken over as a managed addon specifically to turn on prefix
+    # delegation.
+    #
+    # By default the CNI hands each pod one secondary IP from the node's ENIs,
+    # so a t3.medium tops out at 3 ENIs x 6 IPs - 1 = 17 pods. That ceiling
+    # blocked kube-prometheus-stack twice, and the second time adding nodes
+    # could not have helped: node-exporter is a DaemonSet, so it needs a slot on
+    # every node, including the ones already full.
+    #
+    # With prefix delegation the CNI allocates /28 blocks instead of single
+    # addresses, taking the ceiling to ~110 per node at no cost. The private
+    # subnets are /20 with ~4,000 free addresses each, so there is room.
+    #
+    # resolve_conflicts_on_create = OVERWRITE because the CNI is already running
+    # as the cluster's default self-managed install; this adopts it.
+    vpc-cni = {
+      most_recent                 = true
+      before_compute              = true
+      resolve_conflicts_on_create = "OVERWRITE"
+      configuration_values = jsonencode({
+        env = {
+          ENABLE_PREFIX_DELEGATION = "true"
+          WARM_PREFIX_TARGET       = "1"
+        }
+      })
+    }
   }
 
   eks_managed_node_groups = {
     default = {
       instance_types = [var.node_instance_type]
+
+      # Prefix delegation raises what the CNI *can* allocate, but kubelet's own
+      # --max-pods is fixed when the node boots and is still derived from the
+      # instance type, so it would stay at 17 and keep rejecting pods. This sets
+      # it explicitly to match the new ceiling.
+      #
+      # Applies to new nodes only - existing ones keep the value they booted
+      # with, so the group has to be rolled for this to take effect.
+      # Must be stated explicitly. EKS defaults 1.30+ node groups to AL2023, but
+      # the module's own default is still AL2 — and it picks the user-data
+      # format from *its* value, not from what EKS actually provisions. Left
+      # unset, it generated an AL2 `bootstrap.sh` script for an AL2023 node and
+      # silently ignored cloudinit_pre_nodeadm, which is AL2023-only.
+      ami_type = var.node_ami_type
+
+      cloudinit_pre_nodeadm = [{
+        content_type = "application/node.eks.aws"
+        content      = <<-EOT
+          apiVersion: node.eks.aws/v1alpha1
+          kind: NodeConfig
+          spec:
+            kubelet:
+              config:
+                maxPods: 110
+        EOT
+      }]
 
       min_size     = var.node_group_size.min
       max_size     = var.node_group_size.max
