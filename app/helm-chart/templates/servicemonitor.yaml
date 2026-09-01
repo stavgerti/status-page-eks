@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "status-page.fullname" . }}
+  labels:
+    {{- include "status-page.labels" . | nindent 4 }}
+spec:
+  # Matches the web Service's labels, not the pod's - Prometheus discovers
+  # the scrape target through the Service/Endpoints object.
+  selector:
+    matchLabels:
+      {{- include "status-page.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /metrics

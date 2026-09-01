@@ -50,6 +50,11 @@ spec:
               value: {{ .Values.redis.port | quote }}
             - name: REDIS_SSL
               value: {{ .Values.env.redisSsl | quote }}
+            # gunicorn runs 5 workers - without this, a /metrics scrape only
+            # ever sees whichever single worker answered the request, not an
+            # aggregate. gunicorn.conf.py cleans up recycled workers' files.
+            - name: PROMETHEUS_MULTIPROC_DIR
+              value: /tmp/prometheus-multiproc
           # Proves the gunicorn process is alive without touching the DB/Redis -
           # a transient DB blip should not cause a pod restart on its own.
           # gunicorn binds 127.0.0.1 on purpose - only the nginx sidecar should

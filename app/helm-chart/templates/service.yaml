@@ -10,5 +10,7 @@ spec:
   selector:
     {{- include "status-page.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
   ports:
-    - port: {{ .Values.service.port }}
+    # Named so the ServiceMonitor's endpoint (port: http) can reference it.
+    - name: http
+      port: {{ .Values.service.port }}
       targetPort: {{ .Values.service.targetPort }}

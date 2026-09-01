@@ -20,10 +20,19 @@ RUN apt-get update \
 RUN git clone --branch "${STATUS_PAGE_VERSION}" --depth 1 \
     https://github.com/Status-Page/Status-Page.git /opt/status-page
 
+# We don't own settings.py/urls.py - this patches four narrow, exact anchors
+# to wire in django-prometheus (app registration, middleware position, DB
+# backend, /metrics route) rather than shipping replacement copies of files
+# that change on every upstream release. Fails the build loudly if an anchor
+# no longer matches instead of silently skipping the patch.
+COPY patches/enable_prometheus_metrics.py /tmp/enable_prometheus_metrics.py
+RUN python3 /tmp/enable_prometheus_metrics.py /opt/status-page/statuspage/statuspage
+
 RUN python -m venv /venv
 ENV PATH="/venv/bin:${PATH}"
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r /opt/status-page/requirements.txt
+    && pip install --no-cache-dir -r /opt/status-page/requirements.txt \
+    && pip install --no-cache-dir django-prometheus==2.3.1
 
 
 FROM python:3.12-slim
@@ -33,11 +42,17 @@ LABEL org.opencontainers.image.source="https://github.com/Status-Page/Status-Pag
 
 # procps provides pgrep, used by the worker/scheduler exec probes in the Helm chart
 # (those roles have no HTTP port to health-check over).
+#
+# gunicorn runs 5 worker processes - prometheus_client's multiprocess mode
+# needs a shared, writable directory to aggregate their metrics into one
+# series instead of the scrape only ever seeing whichever worker answered.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libpq5 procps \
     && rm -rf /var/lib/apt/lists/* \
     && addgroup --system statuspage \
-    && adduser --system --ingroup statuspage --home /opt/status-page --shell /usr/sbin/nologin statuspage
+    && adduser --system --ingroup statuspage --home /opt/status-page --shell /usr/sbin/nologin statuspage \
+    && mkdir -p /tmp/prometheus-multiproc \
+    && chown statuspage:statuspage /tmp/prometheus-multiproc
 
 COPY --from=builder /venv /venv
 COPY --from=builder --chown=statuspage:statuspage /opt/status-page /opt/status-page
@@ -45,6 +60,11 @@ COPY --from=builder --chown=statuspage:statuspage /opt/status-page /opt/status-p
 # Our production settings module - overwrites the upstream configuration_example.py location.
 COPY --chown=statuspage:statuspage statuspage/statuspage/configuration.py \
     /opt/status-page/statuspage/statuspage/configuration.py
+
+# Cleans up dead workers' metric files from PROMETHEUS_MULTIPROC_DIR on
+# recycle (--max-requests below rotates workers regularly) - see the
+# comment in the file itself.
+COPY --chown=statuspage:statuspage gunicorn.conf.py /opt/status-page/statuspage/gunicorn.conf.py
 
 ENV PATH="/venv/bin:${PATH}" \
     PYTHONUNBUFFERED=1 \
@@ -68,4 +88,4 @@ EXPOSE 8001
 # worker (`manage.py rqworker high default low`) and scheduler (`manage.py rqscheduler`).
 CMD ["gunicorn", "--bind", "127.0.0.1:8001", "--workers", "5", "--threads", "3", \
      "--timeout", "120", "--max-requests", "5000", "--max-requests-jitter", "500", \
-     "statuspage.wsgi:application"]
+     "--config", "gunicorn.conf.py", "statuspage.wsgi:application"]
