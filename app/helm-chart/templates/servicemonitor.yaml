@@ -11,5 +11,7 @@ spec:
     matchLabels:
       {{- include "status-page.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
   endpoints:
-    - port: http
+    # Not "http" - that port only ever reaches location / (404s on /metrics).
+    # This one isn't backed by the Ingress at all, so it's cluster-internal only.
+    - port: metrics
       path: /metrics

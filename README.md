@@ -92,6 +92,7 @@ cd ../../platform/bootstrap && GRAFANA_ADMIN_PASSWORD=... bash install.sh
 | Ilan | Helm chart: Deployments, Ingress, Service, migration hook, probes, ExternalSecret | `app/helm-chart` |
 | Ilan | GitHub Actions: build → assume role → push → bump tag | `app/cicd` |
 | Ilan | Secret-leak enforcement: gitleaks CI scan, pre-commit hook, `SECURITY.md` | `security/secret-scanning` |
+| Ilan | Application metrics: django-prometheus, `/metrics` on its own cluster-internal port, ServiceMonitor | `app/prometheus-metrics` |
 
 ## Workflow
 
