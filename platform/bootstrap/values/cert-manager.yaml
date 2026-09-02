@@ -5,10 +5,15 @@
 # certificate is what makes HTTPS possible at all here, and it's why the load
 # balancer is an NLB passing TCP through rather than an ALB.
 #
-# No AWS permissions are needed: the HTTP-01 challenge is served over port 80
-# through the ingress controller and never calls an AWS API. (DNS-01 would need
-# Route 53 write access from the pod, and is only required for wildcard certs,
-# which we don't use.)
+# Challenges are solved with DNS-01, not HTTP-01. HTTP-01 was the original plan
+# and would have needed no AWS access at all, but it works by creating a second,
+# temporary Ingress for the same host — which F5's ingress controller rejects.
+# See manifests/cluster-issuers.yaml for the full story.
+#
+# So cert-manager does call AWS: it writes a TXT record in the Route 53 zone.
+# It gets no policy of its own — with no IRSA in this account it authenticates
+# as the node role, which already carries the `externaldns` inline policy
+# granting exactly those calls on exactly that zone.
 
 crds:
   enabled: true

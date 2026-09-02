@@ -93,7 +93,7 @@ were granted for.
 |---|---|---|
 | `lb-controller` | inline | AWS Load Balancer Controller — provisions the NLB from ingress-nginx's Service |
 | `external-secrets` | inline | External Secrets Operator — reads `stav-status-page/*` from Secrets Manager |
-| `externaldns` | inline | ExternalDNS — writes records in the `devops.lvtvv.com` zone |
+| `externaldns` | inline | ExternalDNS — writes records in the `devops.lvtvv.com` zone. cert-manager rides on this one too, see below |
 | `AmazonEBSCSIDriverPolicy` | AWS managed | EBS CSI driver — volumes for the Prometheus PVC |
 
 `lb-controller.json` is fetched verbatim from
@@ -111,8 +111,17 @@ it survives a secret being recreated with a different random ARN suffix.
 secret prefix, and the zone ID in the ExternalDNS policy matches the zone that
 actually exists in Route 53.
 
-cert-manager appears in none of this on purpose — the HTTP-01 challenge never
-calls AWS, so it needs no permissions at all.
+cert-manager has no policy of its own, but it does call AWS. The original design
+used the HTTP-01 challenge, which needs no credentials at all; F5's ingress
+controller rejects that solver's temporary Ingress, so the issuers use DNS-01
+instead and cert-manager writes a TXT record to prove ownership. It needs
+exactly `route53:ChangeResourceRecordSets` on our zone plus the list/GetChange
+calls — which is what the `externaldns` policy above already grants, and with no
+IRSA here both controllers authenticate as the same node role. So nothing was
+added; it is worth knowing the dependency exists. Narrowing the ExternalDNS
+policy would silently break certificate renewal.
+
+See `platform/bootstrap/manifests/cluster-issuers.yaml` for the full reasoning.
 
 ## Account constraints worth knowing before editing
 

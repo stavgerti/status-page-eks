@@ -87,20 +87,27 @@ controller they were meant for. The policies are scoped as tightly as the APIs
 allow (ExternalDNS to our zone only, ESO to the `stav-status-page/` prefix) to
 limit what that would expose.
 
-cert-manager needs no AWS permissions at all — the HTTP-01 challenge is served
-over HTTP through the ingress controller and never calls AWS.
+cert-manager is part of this too. HTTP-01 was the original design and needs no
+AWS credentials, but F5's controller rejects the solver's temporary Ingress (see
+`manifests/cluster-issuers.yaml`), so the issuers use DNS-01 — which writes a TXT
+record and therefore does call Route 53. It has no policy of its own: the
+`externaldns` inline policy on the node role already allows exactly those calls
+on our zone, and without IRSA both controllers arrive as the same node role.
+Worth knowing before narrowing that policy: it would break certificate renewal,
+not just ExternalDNS.
 
 ## Cluster-scoped resources
 
 **`manifests/cluster-issuers.yaml`** — `letsencrypt-staging` and
-`letsencrypt-prod`.
+`letsencrypt-prod`, both solving **DNS-01** against our Route 53 zone. That file
+carries the full explanation of why not HTTP-01.
 
 Point anything new at **staging first**. Production allows 5 duplicate
 certificates per week with no way to lift the limit early, so debugging against
 it can lock you out for days. Staging certificates are untrusted by browsers but
-effectively unlimited, and they prove the whole chain: DNS resolves, the NLB
-routes port 80, the ingress controller serves the challenge, cert-manager writes
-the Secret.
+effectively unlimited, and they prove the whole chain: cert-manager can write the
+TXT record, Let's Encrypt can resolve it, and the signed certificate lands in the
+Secret the Ingress references.
 
 **`manifests/cluster-secret-store.yaml`** — `aws-secrets-manager`, the store name
 the application chart references. Cluster-scoped so the chart can use it from any
