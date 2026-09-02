@@ -21,9 +21,35 @@ split is Helm owns the platform, ArgoCD owns the application.
 | cert-manager | `jetstack/cert-manager` | Issues and renews the Let's Encrypt certificate |
 | External Secrets Operator | `external-secrets/external-secrets` | Pulls secrets from AWS Secrets Manager |
 | ExternalDNS | `external-dns/external-dns` | Writes Route 53 records from Ingress objects |
+| kube-prometheus-stack | `prometheus-community/kube-prometheus-stack` | Prometheus, Grafana, Alertmanager - cluster and pod metrics |
 
 Order matters: the load balancer controller has to exist before anything asks
 for a `Service` of type `LoadBalancer`.
+
+## Monitoring
+
+kube-prometheus-stack gives cluster-wide metrics for free: CPU, memory,
+network and disk for every pod, including the application's, via node-exporter
+and kube-state-metrics. `values/kube-prometheus-stack.yaml` turns off the
+control-plane scrape targets (`kubeControllerManager`, `kubeScheduler`,
+`kubeEtcd`, `kubeProxy`) since EKS doesn't expose them - they'd sit permanently
+red otherwise.
+
+`serviceMonitorSelectorNilUsesHelmValues: false` (and the Pod/Rule
+equivalents) means Prometheus picks up any ServiceMonitor in the cluster, not
+just ones it created - the application's own ServiceMonitor
+(`app/helm-chart`, wiring django-prometheus for request/DB metrics) is
+scraped without any change needed here.
+
+Grafana is `ClusterIP` only, deliberately not on the Ingress:
+
+```bash
+kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
+```
+
+Admin password is whatever `GRAFANA_ADMIN_PASSWORD` was set to at install
+time - it's not stored in git, so if it's lost, `helm upgrade` with a new
+value and `--set grafana.adminPassword=...` resets it.
 
 ## Two things worth knowing before changing anything here
 

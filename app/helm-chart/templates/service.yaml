@@ -10,5 +10,12 @@ spec:
   selector:
     {{- include "status-page.selectorLabels" (dict "root" . "component" "web") | nindent 4 }}
   ports:
-    - port: {{ .Values.service.port }}
+    - name: http
+      port: {{ .Values.service.port }}
       targetPort: {{ .Values.service.targetPort }}
+    # Separate from "http" so /metrics is never reachable through the Ingress,
+    # which only ever backends onto the "http" port. Only the ServiceMonitor
+    # (scraping the Service directly, in-cluster) targets this one.
+    - name: metrics
+      port: {{ .Values.service.metricsPort }}
+      targetPort: {{ .Values.service.metricsPort }}

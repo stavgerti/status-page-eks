@@ -43,6 +43,9 @@ scheduler:
 service:
   port: 80
   targetPort: 8080 # nginx sidecar listens here
+  # /metrics only - deliberately not referenced by the Ingress, so it's
+  # unreachable from the internet. Only the ServiceMonitor scrapes it.
+  metricsPort: 9090
 
 ingress:
   className: nginx

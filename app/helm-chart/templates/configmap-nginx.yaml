@@ -15,6 +15,14 @@ data:
             alias /shared-static/;
         }
 
+        # Metrics are not served on the public port - only on 9090 below, which
+        # the Service exposes as a separate port the Ingress never references.
+        # Without this, /metrics would be reachable from the internet through
+        # this same location's proxy_pass, since it's a prefix match on /.
+        location /metrics {
+            return 404;
+        }
+
         location / {
             proxy_pass http://127.0.0.1:8001;
             proxy_set_header Host $http_host;
@@ -24,5 +32,21 @@ data:
             proxy_set_header X-Forwarded-Host $http_host;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
             proxy_set_header X-Real-IP $remote_addr;
+        }
+    }
+
+    # Cluster-internal only: the Service's "metrics" port is never referenced by
+    # the Ingress, so this listener is unreachable from outside the cluster.
+    # Prometheus's ServiceMonitor scrapes here directly, bypassing the Ingress.
+    server {
+        listen 9090;
+
+        location /metrics {
+            proxy_pass http://127.0.0.1:8001;
+            proxy_set_header Host $http_host;
+        }
+
+        location / {
+            return 404;
         }
     }
