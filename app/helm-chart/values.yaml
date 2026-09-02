@@ -5,7 +5,7 @@
 image:
   # CI (app/cicd) pushes here; ArgoCD watches this repo and picks up tag bumps.
   repository: 992382545251.dkr.ecr.us-east-1.amazonaws.com/status-page
-  tag: "c05b3a0"
+  tag: "2d205f6"
   pullPolicy: IfNotPresent
 
 nginx:
