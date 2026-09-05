@@ -55,12 +55,49 @@ grafana:
     limits:
       memory: 768Mi
 
-  # Reached with `kubectl port-forward`. Deliberately not exposed through an
-  # Ingress: ArgoCD is already publicly reachable and that was a considered
-  # trade-off for the demo, but a second admin surface with a static password
-  # is not worth adding on top.
+  # ClusterIP, with the Ingress below routing to it - the ingress controller
+  # reaches the Service from inside the cluster, so nothing needs a node port
+  # or a load balancer of its own.
   service:
     type: ClusterIP
+
+  # Exposed on its own subdomain, on the mentor's recommendation. Nothing here
+  # had to be built for it: ExternalDNS sees this Ingress and writes the A
+  # record, cert-manager sees the annotation and issues the certificate. That
+  # is the whole point of having those two controllers.
+  #
+  # Issued against staging first - the registered domain is lvtvv.com, the
+  # mentor's, and Let's Encrypt caps 50 certificates per week per registered
+  # domain, so a failed loop against production spends his quota rather than
+  # ours. Staging came back Ready in 45s and the host served Grafana's login
+  # page, which proved the whole chain (ExternalDNS wrote the record, the TXT
+  # challenge validated, the ingress routed), so this is now on production.
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+    hosts:
+      - grafana.devops.lvtvv.com
+    path: /
+    pathType: Prefix
+    tls:
+      - hosts:
+          - grafana.devops.lvtvv.com
+        secretName: grafana-tls
+
+  grafana.ini:
+    server:
+      # Grafana builds redirects and asset links from this. Left unset behind a
+      # proxy it emits localhost URLs and the login redirect breaks.
+      root_url: https://grafana.devops.lvtvv.com
+    users:
+      # It is a single-admin instance; nobody should be able to create accounts.
+      allow_sign_up: false
+    auth.anonymous:
+      # Default already, but stated explicitly now that the page is reachable
+      # from the internet rather than only through a port-forward.
+      enabled: false
 
 alertmanager:
   alertmanagerSpec:

@@ -2,7 +2,7 @@
 
 Production infrastructure for the open-source [Status-Page](https://github.com/Status-Page/Status-Page) app (Django) — a DevOps final project.
 
-**Live:** https://devops.lvtvv.com · **ArgoCD:** https://argocd.devops.lvtvv.com
+**Live:** https://devops.lvtvv.com · **ArgoCD:** https://argocd.devops.lvtvv.com · **Grafana:** https://grafana.devops.lvtvv.com
 
 ## Stack
 
@@ -63,6 +63,13 @@ These are the non-obvious ones. Each is explained in full in the relevant direct
 **Certificates use the DNS-01 challenge.** HTTP-01 needs a second Ingress for the same host, which F5's controller rejects outright. DNS-01 writes a TXT record instead, using Route 53 permissions the node role already had.
 
 **Always issue against `letsencrypt-staging` first.** Let's Encrypt caps 50 certificates per week per *registered* domain, and the registered domain is `lvtvv.com` — the mentor's. Debugging against production spends his quota, not ours.
+
+**Every public hostname costs one Ingress, and nothing else.** Grafana was put
+on its own subdomain by adding an Ingress to a values file. ExternalDNS wrote
+the Route 53 record, cert-manager issued the certificate, and the existing
+ingress controller routed by hostname - no second load balancer, no DNS change
+by hand, no certificate to renew. That is the return on those three
+controllers, and it is worth knowing before adding a fourth hostname.
 
 **Node capacity is fixed at three, with prefix delegation enabled.** The VPC CNI gives every pod a real VPC IP, capping a t3.medium at 17 pods. Prefix delegation raises that to 110. No Cluster Autoscaler: the pod ceiling was the actual constraint, and it is fixed at the root.
 

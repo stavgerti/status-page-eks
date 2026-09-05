@@ -41,15 +41,40 @@ just ones it created - the application's own ServiceMonitor
 (`app/helm-chart`, wiring django-prometheus for request/DB metrics) is
 scraped without any change needed here.
 
-Grafana is `ClusterIP` only, deliberately not on the Ingress:
+Grafana is at **https://grafana.devops.lvtvv.com**, on the mentor's
+recommendation. Exposing it needed no new infrastructure at all - the values
+file gained an Ingress, and ExternalDNS wrote the A record while cert-manager
+issued the certificate. No second load balancer either: the existing ingress
+controller routes by hostname.
+
+The Service stays `ClusterIP`; the ingress controller reaches it from inside
+the cluster. `port-forward` still works and is the fallback if DNS or the
+certificate ever break:
 
 ```bash
 kubectl port-forward -n monitoring svc/kube-prometheus-stack-grafana 3000:80
 ```
 
+Issued against `letsencrypt-staging` first, per the rule below, and moved to
+`letsencrypt-prod` only after staging came back Ready and the host actually
+served Grafana's login page.
+
+`grafana.ini` sets `root_url` - without it Grafana builds redirects and asset
+links from the request it sees behind the proxy and the login redirect breaks.
+Sign-up and anonymous access are both disabled explicitly now that the page is
+reachable from the internet.
+
 Admin password is whatever `GRAFANA_ADMIN_PASSWORD` was set to at install
 time - it's not stored in git, so if it's lost, `helm upgrade` with a new
-value and `--set grafana.adminPassword=...` resets it.
+value and `--set grafana.adminPassword=...` resets it. Re-running `install.sh`
+without that variable set would blank it, so pass it, or recover the current
+one from the `kube-prometheus-stack-grafana` secret and pass that through.
+
+**The trade-off is real and worth stating.** This is now a second admin surface
+on the public internet, behind a single static password, alongside ArgoCD. The
+honest answer to "would you ship this?" is no - it wants SSO or an OAuth proxy
+in front. The password is long and the page is TLS-only, which is the floor,
+not the bar.
 
 ## Two things worth knowing before changing anything here
 
