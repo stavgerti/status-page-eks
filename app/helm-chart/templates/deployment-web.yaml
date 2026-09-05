@@ -11,6 +11,14 @@ spec:
       {{- include "status-page.selectorLabels" (dict "root" . "component" "web") | nindent 6 }}
   template:
     metadata:
+      annotations:
+        # ConfigMap is mounted via subPath, which never picks up live updates
+        # (not after a minute, not ever) - the pod has to actually restart to
+        # see a new nginx.conf. This annotation changes whenever the
+        # ConfigMap's content changes, which changes the pod template, which
+        # makes the Deployment roll itself instead of quietly serving stale
+        # config indefinitely.
+        checksum/nginx-config: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
       labels:
         {{- include "status-page.selectorLabels" (dict "root" . "component" "web") | nindent 8 }}
     spec:

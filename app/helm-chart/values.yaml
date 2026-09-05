@@ -20,17 +20,23 @@ redis:
 
 web:
   replicaCount: 2
+  # Sized from 24h Prometheus usage: ~379MiB avg, 393MiB peak. Old 256Mi
+  # request sat 48% below actual use, so the scheduler underestimated this
+  # pod's real footprint when placing it. 448Mi = peak plus headroom; 640Mi
+  # limit puts peak utilization at ~61% instead of the old 77%.
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: 500m, memory: 512Mi }
+    requests: { cpu: 100m, memory: 448Mi }
+    limits: { cpu: 500m, memory: 640Mi }
 
 worker:
   replicaCount: 1
   # django-rq queue priority order - passed verbatim to `manage.py rqworker <queues>`.
   queues: "high default low"
+  # Sized from 24h Prometheus usage: ~72MiB avg, 87MiB peak - old 256Mi
+  # request reserved 3x actual use, holding capacity nobody needs.
   resources:
-    requests: { cpu: 100m, memory: 256Mi }
-    limits: { cpu: 500m, memory: 512Mi }
+    requests: { cpu: 100m, memory: 128Mi }
+    limits: { cpu: 500m, memory: 256Mi }
 
 scheduler:
   # rq-scheduler is NOT safe to run with >1 replica - duplicate schedulers double-fire
