@@ -42,7 +42,12 @@ data:
         listen 9090;
 
         location /metrics {
-            proxy_pass http://127.0.0.1:8001;
+            # Django's route is 'metrics/' (trailing slash, from the
+            # django-prometheus patch) - proxy_pass's URI here rewrites the
+            # bare /metrics the ServiceMonitor requests into /metrics/, so
+            # Django matches directly instead of relying on its
+            # APPEND_SLASH redirect reaching the backend correctly.
+            proxy_pass http://127.0.0.1:8001/metrics/;
             # Prometheus scrapes by pod IP, not $http_x_forwarded_host - passing
             # that through as Host fails Django's ALLOWED_HOSTS check with 400,
             # same failure mode the web readiness probe works around above.
