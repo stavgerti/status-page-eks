@@ -43,7 +43,10 @@ data:
 
         location /metrics {
             proxy_pass http://127.0.0.1:8001;
-            proxy_set_header Host $http_host;
+            # Prometheus scrapes by pod IP, not $http_x_forwarded_host - passing
+            # that through as Host fails Django's ALLOWED_HOSTS check with 400,
+            # same failure mode the web readiness probe works around above.
+            proxy_set_header Host {{ .Values.ingress.host | quote }};
         }
 
         location / {
