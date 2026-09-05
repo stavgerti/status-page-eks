@@ -64,11 +64,70 @@ links from the request it sees behind the proxy and the login redirect breaks.
 Sign-up and anonymous access are both disabled explicitly now that the page is
 reachable from the internet.
 
-Admin password is whatever `GRAFANA_ADMIN_PASSWORD` was set to at install
-time - it's not stored in git, so if it's lost, `helm upgrade` with a new
-value and `--set grafana.adminPassword=...` resets it. Re-running `install.sh`
-without that variable set would blank it, so pass it, or recover the current
-one from the `kube-prometheus-stack-grafana` secret and pass that through.
+### Changing the admin password
+
+The password lives in **two places that can disagree**, and that is the whole
+difficulty:
+
+- the `kube-prometheus-stack-grafana` Secret, key `admin-password` - what the
+  chart sets and what you read it back from
+- Grafana's own SQLite database on the PVC - **what login actually checks**
+
+`grafana.adminPassword` in the chart only reaches the database when Grafana
+creates the admin user, which happens once, on the first start against an
+empty volume. With `persistence` enabled that user already exists, so a
+`helm upgrade` updates the Secret and the env var and changes nothing about
+what you can log in with. It looks like it worked and it did not.
+
+Read the current one:
+
+```bash
+kubectl get secret -n monitoring kube-prometheus-stack-grafana   -o jsonpath='{.data.admin-password}' | base64 -d
+```
+
+**Through the UI** (simplest, and what a person should normally do):
+Profile → Change password, or `/profile/password` directly. Note that this
+writes to the database only - the Secret then holds a stale value, and the
+command above will hand you a password that no longer works. Update the Secret
+too if you want it to stay the recovery path.
+
+**From the command line**, three steps, none of them optional:
+
+```bash
+PW='<the new password>'
+
+# 1. Secret and env var, so a future pod start agrees with the database
+helm upgrade kube-prometheus-stack prometheus-community/kube-prometheus-stack   --namespace monitoring --values values/kube-prometheus-stack.yaml   --set grafana.adminPassword="$PW"
+
+# 2. The database - the part that actually gates login.
+#    --configOverrides is required: without it the CLI writes to its own
+#    default data path (/usr/share/grafana/data) instead of the mounted volume,
+#    and still prints "Admin password changed successfully".
+GPOD=$(kubectl get pods -n monitoring -l app.kubernetes.io/name=grafana   -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n monitoring "$GPOD" -c grafana --   grafana cli --homepath /usr/share/grafana   --configOverrides cfg:default.paths.data=/var/lib/grafana   admin reset-admin-password "$PW"
+
+# 3. Restart. The running process holds the user in memory; without this the
+#    database is correct and login still fails.
+kubectl rollout restart deployment/kube-prometheus-stack-grafana -n monitoring
+```
+
+Then verify against the endpoint a browser actually uses, and check that a
+wrong password is still rejected - otherwise you have only proven the endpoint
+answers, not that it authenticates:
+
+```bash
+curl -s -o /dev/null -w '%{http_code}
+' -X POST   -H 'Content-Type: application/json'   -d "{\"user\":\"admin\",\"password\":\"$PW\"}"   https://grafana.devops.lvtvv.com/login       # expect 200
+```
+
+Do not verify with basic auth against `/api/*`: a wrong password and a correct
+one both come back 401 there, so the test cannot fail informatively.
+
+Re-running `install.sh` without `GRAFANA_ADMIN_PASSWORD` set writes an empty
+value into the Secret. That does not lock you out today, since login reads the
+database - but it does destroy the recovery path, and the next pod that starts
+against a fresh volume would provision with no password at all. Always pass it,
+or recover the current value first and pass that through.
 
 **The trade-off is real and worth stating.** This is now a second admin surface
 on the public internet, behind a single static password, alongside ArgoCD. The
