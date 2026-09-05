@@ -10,6 +10,10 @@ on:
     paths:
       - "app/Dockerfile"
       - "app/statuspage/**"
+      # Runs at build time and rewrites the vendored upstream source, so a
+      # change here changes the image as much as the Dockerfile does. It was
+      # missing here, so a fix to the patch script alone never rebuilt.
+      - "app/patches/**"
       - ".github/workflows/build-and-push.yaml"
   workflow_dispatch: {}
 
