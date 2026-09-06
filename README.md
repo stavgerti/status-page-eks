@@ -11,6 +11,7 @@ Terraform · Amazon EKS 1.36 (managed node group) · ArgoCD (GitOps) · Helm · 
 CI runs on GitHub-hosted runners — no self-hosted runners in the cluster.
 
 Architecture diagrams:
+- Interactive (draggable): https://claude.ai/code/artifact/eaa42d4d-d5c7-4bc7-a79d-a30f864ab631 — every component from DNS to Postgres, drag any box to rearrange, connections and traffic dots follow live.
 - Hebrew: https://claude.ai/code/artifact/9d3d9810-9616-44ed-8519-729db13e1577
 - English: https://claude.ai/code/artifact/58032f1c-a272-46a8-9a1b-ffb18c7c5b3f
 
@@ -75,6 +76,12 @@ controllers, and it is worth knowing before adding a fourth hostname.
 
 **State locking uses S3, not DynamoDB.** DynamoDB is denied for this user, and since Terraform 1.10 `use_lockfile` makes the lock table unnecessary anyway.
 
+**`/metrics` took three fixes to actually work, not one.** In order: nginx forwarded the scrape's pod-IP Host header straight to Django, which 400'd against `ALLOWED_HOSTS` — same failure mode as the readiness probe, fixed the same way (pin the Host header). Then the ServiceMonitor path was missing a trailing slash, 404. Then even `/metrics/` 404'd — django-prometheus registers its view at `metrics` with no slash, and our patch mounts that under `path('metrics/', ...)`, so the real route Django concatenates is `/metrics/metrics`. Confirmed by hitting gunicorn directly inside the pod, bypassing nginx entirely.
+
+**The nginx sidecar's config doesn't hot-reload.** It's mounted via `subPath`, which never receives live ConfigMap updates — no amount of waiting fixes it, only a pod restart does. A checksum annotation on the pod template (hash of the rendered ConfigMap) changes the pod spec whenever the config does, so the Deployment rolls itself instead of quietly serving stale nginx config.
+
+**web/worker resource requests are sized from real usage, not guesses.** Pulled from 24h of Prometheus data: web was requesting 48% below its ~393Mi peak (scheduler was underestimating its real footprint), worker was reserving ~3x its ~87Mi peak (holding capacity nobody used). Re-check against Prometheus before changing either.
+
 ## Running it
 
 ```bash
@@ -100,6 +107,16 @@ cd ../../platform/bootstrap && GRAFANA_ADMIN_PASSWORD=... bash install.sh
 | Ilan | GitHub Actions: build → assume role → push → bump tag | `app/cicd` |
 | Ilan | Secret-leak enforcement: gitleaks CI scan, pre-commit hook, `SECURITY.md` | `security/secret-scanning` |
 | Ilan | Application metrics: django-prometheus, `/metrics` on its own cluster-internal port, ServiceMonitor | `app/prometheus-metrics` |
+
+## Known gaps
+
+Honest state, not aspirational — these are real and open, not yet worked on:
+
+- **No alerting.** kube-prometheus-stack's Alertmanager runs with persistent storage but no `PrometheusRule`/receiver configured — metrics are collected, nobody gets paged.
+- **No PodDisruptionBudget** on the web Deployment, despite `replicaCount: 2`.
+- **No pod-level `securityContext`** (`runAsNonRoot`, dropped capabilities) in the chart — the image itself runs non-root, but nothing enforces that at the Kubernetes level if the image ever changes.
+- **No image vulnerability scanning** (Trivy/Grype) in CI, and no ECR scan-on-push.
+- **Zero automated tests** in the repo. Cheapest first win: unit-test `app/patches/enable_prometheus_metrics.py`'s anchor-matching — it's a pure function, feed it fixture text, assert the patched output.
 
 ## Workflow
 
