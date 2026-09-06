@@ -14,6 +14,80 @@ Architecture diagrams:
 - Interactive (draggable): https://claude.ai/code/artifact/eaa42d4d-d5c7-4bc7-a79d-a30f864ab631 — every component from DNS to Postgres, drag any box to rearrange, connections and traffic dots follow live.
 - Hebrew: https://claude.ai/code/artifact/9d3d9810-9616-44ed-8519-729db13e1577
 - English: https://claude.ai/code/artifact/58032f1c-a272-46a8-9a1b-ffb18c7c5b3f
+- Full write-up with both diagrams below plus the CI/CD one: [ARCHITECTURE.md](ARCHITECTURE.md)
+
+## Runtime architecture
+
+What happens, end to end, when a browser hits `devops.lvtvv.com`, plus the control-plane connections (dashed) that keep the app deployed, secured, and observed. CI/CD & GitOps pipeline diagram is in [ARCHITECTURE.md](ARCHITECTURE.md).
+
+```mermaid
+flowchart TD
+    Client(["Browser"])
+    R53["Route 53"]
+    LE["Let's Encrypt"]
+
+    subgraph Public["Public Subnet"]
+        NLB["Network LB"]
+    end
+
+    subgraph Cluster["EKS Cluster"]
+        ING["NGINX Ingress"]
+        SVC["Web Service"]
+
+        subgraph AppPods["Application Pods"]
+            WEB["Web Pod"]
+            WRK["Worker Pod"]
+            SCH["Scheduler Pod"]
+        end
+
+        subgraph Platform["Platform Services"]
+            ARGO["ArgoCD"]
+            CM["cert-manager"]
+            ESO["External Secrets"]
+            EDNS["ExternalDNS"]
+            PROM["Prometheus"]
+            GRAF["Grafana"]
+        end
+    end
+
+    subgraph Data["Data Layer"]
+        RDS[("RDS Postgres")]
+        REDIS[("ElastiCache")]
+        SM["Secrets Manager"]
+    end
+
+    Client -->|DNS lookup| R53
+    R53 -->|resolves to NLB| NLB
+    NLB -->|private VPC routing| ING
+    ING -->|TLS terminates here| SVC
+    SVC -->|ClusterIP load-balances| WEB
+
+    WEB -->|reads / writes| RDS
+    WEB -->|cache + queue| REDIS
+    WRK -->|consumes jobs| REDIS
+    WRK -->|writes| RDS
+
+    CM -.->|DNS-01 challenge| LE
+    CM -.->|provides TLS cert| ING
+    EDNS -.->|writes DNS record| R53
+    ESO -.->|pulls secrets| SM
+    ESO -.->|injects env vars| WEB
+    ARGO -.->|syncs deploy| WEB
+    ARGO -.->|syncs deploy| WRK
+    ARGO -.->|syncs deploy| SCH
+    PROM -.->|scrapes /metrics| WEB
+    GRAF -.->|queries| PROM
+
+    classDef aws fill:#FF9900,stroke:#8a5a00,color:#1a1a1a,font-weight:bold;
+    classDef k8s fill:#326CE5,stroke:#1a3d82,color:#ffffff,font-weight:bold;
+    classDef ext fill:#9aa0a6,stroke:#5f6368,color:#1a1a1a;
+
+    class R53,NLB,RDS,REDIS,SM aws
+    class ING,SVC,WEB,WRK,SCH,ARGO,CM,ESO,EDNS,PROM,GRAF k8s
+    class Client,LE ext
+```
+
+Orange = AWS-managed service. Blue = in-cluster Kubernetes component. Gray = external/third-party. Solid arrows are the request path; dashed arrows are control-plane traffic, not user traffic.
 
 ## How a change reaches production
 
